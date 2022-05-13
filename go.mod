@@ -1,4 +1,4 @@
-module github.com/kmlixh/dollar-yaml
+module github.com/kmlixh/dollarYaml
 
 go 1.18
 

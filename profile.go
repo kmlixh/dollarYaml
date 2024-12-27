@@ -3,79 +3,96 @@ package dollarYaml
 import (
 	"errors"
 	"fmt"
-	"gopkg.in/yaml.v2"
-	"io/ioutil"
 	"os"
-	"reflect"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
-type YamlProfile map[interface{}]interface{}
+var (
+	ErrValueNotFound = errors.New("value not found")
+	ErrLevelMismatch = errors.New("level does not match")
+)
 
-func (this *YamlProfile) Read(data []byte) *YamlProfile {
-	yaml.Unmarshal(data, this)
-	return this
-}
-func (this *YamlProfile) ReadFromPath(path string) *YamlProfile {
-	bb, _ := ioutil.ReadFile(path)
-	yaml.Unmarshal(bb, this)
-	return this
-}
-func (this YamlProfile) Get(path string) string {
-	_, result := this.GetError(path)
-	return result
-}
+// YamlProfile represents a YAML configuration with environment variable support
+type YamlProfile map[string]interface{}
 
-func (this YamlProfile) GetError(path string) (error, string) {
-	er, result := this.get(path)
-	return er, result
-}
-
-func (this YamlProfile) get(path string) (error, string) {
-	paths := strings.Split(path, ".")
-	step := len(paths)
-	thiz := this
-
-	for i, p := range paths {
-		d, ok := thiz[p]
-		if ok {
-			tp := reflect.TypeOf(d)
-			if tp.Kind() == reflect.Map {
-				if step == i+1 {
-					return errors.New("can't find value"), ""
-				} else {
-					thiz = d.(YamlProfile)
-				}
-
-			} else {
-				var result = ""
-				var err error = nil
-				if step != i+1 {
-					err = errors.New("level does not match")
-				}
-				if tp.Kind() == reflect.String {
-					result = d.(string)
-					if strings.Index(result, "${") == 0 && strings.Index(result, "}") == len(result)-1 {
-						result = strings.ReplaceAll(result, "${", "")
-						result = strings.ReplaceAll(result, "}", "")
-						//判断为包含环境变量模式,
-						departs := strings.Index(result, ":")
-						envName := result[:departs]
-						envValue := os.Getenv(envName)
-						if len(envValue) > 0 {
-							result = envValue
-						} else {
-							result = result[departs+1:]
-						}
-					}
-				} else {
-					result = fmt.Sprint(d)
-				}
-				return err, result
-			}
-		} else {
-			return errors.New(fmt.Sprintf("can't find value of '%v'", p)), ""
-		}
+// Read unmarshals YAML data into YamlProfile
+func (p *YamlProfile) Read(data []byte) error {
+	var result map[string]interface{}
+	if err := yaml.Unmarshal(data, &result); err != nil {
+		return err
 	}
-	return errors.New("can't find value"), ""
+	*p = result
+	return nil
+}
+
+// ReadFromPath reads and unmarshals YAML from a file path
+func (p *YamlProfile) ReadFromPath(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading file: %w", err)
+	}
+	return p.Read(data)
+}
+
+// Get retrieves a value by path, returning empty string if not found
+func (p YamlProfile) Get(path string) string {
+	val, _ := p.GetError(path)
+	return val
+}
+
+// GetError retrieves a value by path with error handling
+func (p YamlProfile) GetError(path string) (string, error) {
+	return p.get(path)
+}
+
+func (p YamlProfile) get(path string) (string, error) {
+	paths := strings.Split(path, ".")
+	var current interface{} = map[string]interface{}(p)
+
+	for i, key := range paths {
+		currentMap, ok := current.(map[string]interface{})
+		if !ok {
+			return "", ErrLevelMismatch
+		}
+
+		value, ok := currentMap[key]
+		if !ok {
+			return "", fmt.Errorf("%w: %s", ErrValueNotFound, key)
+		}
+
+		isLastElement := i == len(paths)-1
+		if isLastElement {
+			return p.resolveValue(value)
+		}
+
+		current = value
+	}
+
+	return "", ErrValueNotFound
+}
+
+// resolveValue handles the conversion and environment variable resolution
+func (p YamlProfile) resolveValue(value interface{}) (string, error) {
+	// Handle non-string values
+	if str, ok := value.(string); ok {
+		if !strings.HasPrefix(str, "${") || !strings.HasSuffix(str, "}") {
+			return str, nil
+		}
+
+		// Strip ${} markers
+		envStr := str[2 : len(str)-1]
+		if colonIdx := strings.Index(envStr, ":"); colonIdx != -1 {
+			envName := envStr[:colonIdx]
+			if envValue := os.Getenv(envName); envValue != "" {
+				return envValue, nil
+			}
+			return envStr[colonIdx+1:], nil
+		}
+
+		return os.Getenv(envStr), nil
+	}
+
+	return fmt.Sprint(value), nil
 }

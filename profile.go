@@ -21,12 +21,25 @@ type YamlProfile struct {
 	debug bool
 }
 
-// New creates a new YamlProfile instance with debug option
-func New(debug bool) *YamlProfile {
-	return &YamlProfile{
-		data:  make(map[string]interface{}),
-		debug: debug,
+// Option represents a configuration option for YamlProfile
+type Option func(*YamlProfile)
+
+// WithDebug enables or disables debug logging
+func WithDebug(debug bool) Option {
+	return func(p *YamlProfile) {
+		p.debug = debug
 	}
+}
+
+// New creates a new YamlProfile instance with options
+func New(opts ...Option) *YamlProfile {
+	p := &YamlProfile{
+		data: make(map[string]interface{}),
+	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 // SetDebug enables or disables debug logging
@@ -61,9 +74,12 @@ func (p *YamlProfile) ReadFromPath(path string) error {
 }
 
 // UnmarshalTo unmarshals the YamlProfile into a target struct
-// It first processes any environment variables in the configuration
-// then unmarshals the processed configuration into the target struct
+// The target must be a pointer to a struct
 func (p *YamlProfile) UnmarshalTo(target interface{}) error {
+	if target == nil {
+		return errors.New("target cannot be nil")
+	}
+
 	// Create a copy of the profile to process environment variables
 	processed := make(map[string]interface{})
 	if err := p.processEnvVars(p.data, processed); err != nil {
@@ -72,7 +88,7 @@ func (p *YamlProfile) UnmarshalTo(target interface{}) error {
 
 	p.debugf("Processed config before marshal: %#v\n", processed)
 
-	// Convert processed map to YAML bytes
+	// Convert processed map to YAML bytes using yaml.v3 internally
 	data, err := yaml.Marshal(processed)
 	if err != nil {
 		return fmt.Errorf("marshaling processed config: %w", err)
@@ -80,7 +96,7 @@ func (p *YamlProfile) UnmarshalTo(target interface{}) error {
 
 	p.debugf("Marshaled YAML:\n%s\n", string(data))
 
-	// Unmarshal into target struct
+	// Unmarshal into target struct using yaml.v3 internally
 	if err := yaml.Unmarshal(data, target); err != nil {
 		return fmt.Errorf("unmarshaling to target: %w", err)
 	}

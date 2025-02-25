@@ -16,7 +16,7 @@ test:
     plain: plain text
 `)
 
-	p := New(true) // Enable debug for this test
+	p := New(WithDebug(true)) // Use option pattern
 	if err := p.Read(yamlData); err != nil {
 		t.Fatalf("failed to read yaml data: %v", err)
 	}
@@ -80,7 +80,7 @@ test:
 				defer os.Unsetenv(k)
 			}
 
-			p := New(false) // Disable debug for individual test cases
+			p := New() // No debug for individual test cases
 			if err := p.Read(yamlData); err != nil {
 				t.Fatalf("failed to read yaml data: %v", err)
 			}
@@ -162,7 +162,7 @@ test:
 				defer os.Unsetenv(k)
 			}
 
-			p := New(false) // Disable debug for normal operation
+			p := New() // No debug for normal operation
 			if err := p.ReadFromPath(tmpfile.Name()); err != nil {
 				t.Fatalf("failed to read from file: %v", err)
 			}
@@ -310,7 +310,7 @@ database:
 				defer os.Unsetenv(k)
 			}
 
-			p := New(tt.debug)
+			p := New(WithDebug(tt.debug))
 			if err := p.Read(yamlData); err != nil {
 				t.Fatalf("failed to read yaml data: %v", err)
 			}
@@ -555,7 +555,7 @@ features:
 				defer os.Unsetenv(k)
 			}
 
-			p := New(tt.debug)
+			p := New(WithDebug(tt.debug))
 			if err := p.Read(yamlData); err != nil {
 				t.Fatalf("failed to read yaml data: %v", err)
 			}
